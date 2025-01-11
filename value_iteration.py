@@ -1,20 +1,21 @@
 import sys
 import numpy as np
 import gym
+import csv
 from random import random
 
 sys.stderr = open("log", "w", buffering=1)
 
 
-env = gym.make("MsPacmanDeterministic-v4", obs_type="grayscale", frameskip=8, render_mode="human")
+env = gym.make("MsPacmanDeterministic-v4", obs_type="grayscale", frameskip=8)
 initial_state=current_state = tuple(env.reset().flatten())
-gamma=0.99
+gamma=0.90
+decay=0.96
 
 known_paths={current_state:0}
 known_paths[current_state]={}
 known_paths[current_state][1]={"reward":0, "next_state":0}
 
-decay=0.99
 
 def policy_improvement (states , nA , value_function, gamma=0.9):
     policy={}
@@ -113,41 +114,39 @@ def runEpisode(env, policy):
     done=False
     obs=env.reset()
     s=tuple(obs.flatten()) 
-
-    for _ in range (100):
         
-        while not done:
-            if s in policy:
-                action = policy[s]    
-                newObs, reward, done, _,  = env.step(action)
-                newObs= tuple(newObs.flatten())
-            else:
-                done=True
-            s=newObs
-            total_reward += reward
-            if done:
-                break
+    while not done:
+        if s in policy:
+            action = policy[s]    
+            newObs, reward, done, _,  = env.step(action)
+            newObs= tuple(newObs.flatten())
+        else:
+            done=True
+
+        s=newObs
+        total_reward += reward
+        if done:
+            break
     
-        print(f"Episode reward: {total_reward}")
-        
-        s=env.reset()
-        s=tuple(s.flatten())
-        done=False
-
-    total_reward/=100
-    print(f"Scorul mediu al politicii {total_reward}")    
+    print(f"Scorul politicii {total_reward}")    
    
    
-
 if __name__=="__main__":
 
     epsilon=1
     best_policy={}
-    for i in range(10):
+    for i in range(100):
         print(f"##############Episode: {i}###############\nEpsilon: {epsilon}\n")
         states=list(known_paths.keys())
         best_value, best_policy = value_iteration(states, env.action_space.n, epsilon, gamma=gamma, tol=10e-3)
-        epsilon =min(0.10,epsilon*decay)
+        epsilon =max(0.10,epsilon*decay)
+        with open('policy.csv','w') as f:
+            fieldnames=['State','Action']
+            writer =csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            rows = [{'State': key[0], 'Action': key[1]} for key in best_policy.items()]
+            writer.writerows(rows)
+
         print(f"Stie {len(best_policy.keys())} mutari\n")
 
     runEpisode(env, policy=best_policy)
