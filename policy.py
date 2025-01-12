@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-
+# Definim rețeaua neuronală pentru Policy Gradient
 class PolicyNetworkCNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(PolicyNetworkCNN, self).__init__()
@@ -29,7 +29,7 @@ class PolicyNetworkCNN(nn.Module):
         x = x.view(x.size(0), -1)
         return self.fc(x)
 
-
+# Funcția de preprocesare a observațiilor
 def preprocess_observation(obs):
     if isinstance(obs, np.ndarray) and len(obs.shape) == 3:  # Imagine RGB
         obs = np.mean(obs, axis=2)  # Convertim la grayscale
@@ -39,13 +39,13 @@ def preprocess_observation(obs):
     obs = torch.nn.functional.interpolate(obs, size=(84, 84), mode='bilinear', align_corners=False)
     return obs
 
-
+# Alegerea acțiunii bazată pe probabilități
 def choose_action(policy_net, state):
     probs = policy_net(state)
     action = torch.multinomial(probs, num_samples=1).item()
     return action, torch.log(probs[0, action])
 
-
+# Calcularea recompenselor cumulate (returnuri)
 def compute_returns(rewards, gamma):
     returns = []
     G = 0
@@ -55,67 +55,82 @@ def compute_returns(rewards, gamma):
     returns = torch.tensor(returns, dtype=torch.float32)
     return (returns - returns.mean()) / (returns.std() + 1e-9)
 
+# Funcția pentru antrenare cu entropie și batch de antrenament
+def train_agent(env, policy_net, optimizer, gamma, n_episodes, entropy_weight=0.01):
+    for episode in range(n_episodes):
+        obs = env.reset()
+        state = preprocess_observation(obs[0])
+        log_probs = []
+        rewards = []
+        total_reward = 0
+        done = False
 
-env = gym.make("ALE/MsPacman-v5", render_mode="rgb_array")
-n_actions = env.action_space.n
-input_channels = 1
+        while not done:
+            action, log_prob = choose_action(policy_net, state)
+            next_obs, reward, done, _= env.step(action)
+            next_state = preprocess_observation(next_obs)
 
-policy_net = PolicyNetworkCNN(input_dim=input_channels, output_dim=n_actions)
-optimizer = optim.Adam(policy_net.parameters(), lr=1e-4)
+            log_probs.append(log_prob)
+            rewards.append(reward)
+            total_reward += reward
 
-gamma = 0.99
-n_episodes = 10
+            state = next_state
 
-# Antrenare
-for episode in range(n_episodes):
-    obs = env.reset()
-    state = preprocess_observation(obs[0])
-    log_probs = []
-    rewards = []
-    total_reward = 0
-    done = False
+        # Calcularea și normalizarea returnurilor
+        returns = compute_returns(rewards, gamma)
+        log_probs_tensor = torch.stack(log_probs)
 
-    while not done:
-        action, log_prob = choose_action(policy_net, state)
-        next_obs, reward, done, _, = env.step(action)
-        next_state = preprocess_observation(next_obs)
+        # Calcularea entropiei pentru îmbunătățirea explorării
+        entropy = -torch.sum(torch.exp(log_probs_tensor) * log_probs_tensor)
 
-        log_probs.append(log_prob)
-        rewards.append(reward)
-        total_reward += reward
+        # Calcularea pierderii (adăugăm entropia)
+        loss = -torch.sum(log_probs_tensor * returns) - entropy_weight * entropy
 
-        state = next_state
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
+        print(f"Episode {episode + 1}, Total Reward: {total_reward}, Loss: {loss.item()}")
 
-    returns = compute_returns(rewards, gamma)
-    log_probs_tensor = torch.stack(log_probs)
+# Funcție pentru testare cu vizualizare pe mai multe episoade
+def test_agent(env, policy_net, n_episodes):
+    for episode in range(n_episodes):
+        obs = env.reset()
+        state = preprocess_observation(obs[0])
+        total_reward = 0
+        done = False
 
-    loss = -torch.sum(log_probs_tensor * returns)
+        while not done:
+            action, _ = choose_action(policy_net, state)
+            next_obs, reward, done, _= env.step(action)
+            state = preprocess_observation(next_obs)
+            total_reward += reward
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        print(f"Scor total al agentului în episodul {episode + 1}: {total_reward}")
 
-    print(f"Episode {episode + 1}, Total Reward: {total_reward}")
+# Alegerea modului de rulare
+if __name__ == "__main__":
+    mode = input("Alege modul (train/test): ").strip().lower()
 
-env.close()
-print("Antrenare completă!")
+    env_name = "ALE/MsPacman-v5"
+    gamma = 0.89
+    n_episodes = 1000  # Poți modifica acest număr dacă vrei să testezi mai puține episoade
+    n_test_episodes = n_episodes  # Folosește același număr de episoade pentru testare
+    n_actions = gym.make(env_name).action_space.n
+    input_channels = 1
 
-# Testare
-env = gym.make("ALE/MsPacman-v5", render_mode="human")  # Vizualizare pentru testare
-obs = env.reset()
-state = preprocess_observation(obs[0])
-done = False
-total_reward = 0
+    policy_net = PolicyNetworkCNN(input_dim=input_channels, output_dim=n_actions)
+    optimizer = optim.Adam(policy_net.parameters(), lr=1e-4)
 
-print("Testarea agentului cel mai bine antrenat începe. Urmărește jocul în timp real!")
-
-while not done:
-    action, _ = choose_action(policy_net, state)
-    next_obs, reward, done, _, = env.step(action)
-    state = preprocess_observation(next_obs)
-    total_reward += reward
-
-env.close()
-print(f"Scor total al agentului: {total_reward}")
-
+    if mode == "train":
+        env = gym.make(env_name, render_mode=None)  # Mod non-grafic
+        train_agent(env, policy_net, optimizer, gamma, n_episodes)
+        env.close()
+        print("Antrenare completă!")
+    elif mode == "test":
+        env = gym.make(env_name, render_mode="human")  # Vizualizare grafică
+        test_agent(env, policy_net, n_test_episodes)  # Folosește aceleași episoade
+        env.close()
+        print("Testare completă!")
+    else:
+        print("Mod invalid! Alege 'train' sau 'test'.")
