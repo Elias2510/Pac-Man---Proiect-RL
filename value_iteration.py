@@ -12,6 +12,8 @@ initial_state=current_state = tuple(env.reset().flatten())
 gamma=0.90
 decay=0.96
 
+value_function={}
+
 known_paths={current_state:0}
 known_paths[current_state]={}
 known_paths[current_state][1]={"reward":0, "next_state":0}
@@ -39,7 +41,6 @@ def value_iteration(states, nA, epsilon, gamma=0.9, tol=15):
     maxChange = np.inf
     
     done=False
-    value_function={}
 
     total_reward=0
     
