@@ -1,5 +1,4 @@
-log
-average_rand.py
-.python-version
-help
-policy.csv
+value_iteration/log
+value_iteration/average_rand.py
+value_iteration/.python-version
+value_iteration/help
