@@ -1,3 +1,0 @@
-value_iteration/policies/policy.csv filter=lfs diff=lfs merge=lfs -text
-value_iteration/policies/policy2000.pkl filter=lfs diff=lfs merge=lfs -text
-value_iteration/policies/policy_2.pkl filter=lfs diff=lfs merge=lfs -text
